@@ -2298,6 +2298,9 @@ void force_user_mode_body(CPU_MODE_TYPE cpu_mode, CPU_MODE_TYPE new_mode)
 
 // Operation types: imm, mem_reg, mem_imm
 
+#define thumb_load_pc_pool_const(rd, value)                                   \
+  generate_load_imm(arm_to_mips_reg[rd], (value));                            \
+
 /* LDR 1S+1N+1I, STR 2N */
 #define thumb_access_memory_load(mem_type, reg_rd)                            \
   cycle_count += pFETCH_WS16S(pc >> 24) + 1;                                  \

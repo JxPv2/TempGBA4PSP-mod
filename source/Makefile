@@ -45,7 +45,7 @@ CFLAGS = \
  -fomit-frame-pointer -fstrict-aliasing \
  -falign-functions=32 -falign-loops -falign-labels -falign-jumps \
  -Wall -Wundef -Wpointer-arith -Wbad-function-cast -Wwrite-strings -Wmissing-prototypes -Wsign-compare \
- -DZLIB_CONST
+ -DZLIB_CONST -flto
 
 CXXFLAGS = ${CFLAGS}
 
@@ -57,6 +57,8 @@ LIBDIR = SDK/lib
 LIBS = src/libpower/libpsppower.a -lpspgu -lpsprtc -lpspaudio -lpspkubridge
 
 include ${PSPSDK}/lib/build.mak
+
+LDFLAGS += -flto
 
 all: $(EXTRA_TARGETS)
 	@$(MAKE) -C prx/exceptionHandler/prx
