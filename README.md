@@ -1,6 +1,6 @@
-# TempGBA4PSP-mod (2025 Build)
+# TempGBA4PSP - New 2026 Fixes and Improvements! 
 
-Based on phoe-nix' Github repo.
+Based on phoe-nix' Github repo with lots of updates, fixes and changes! 
 
 - Added a 16:9 Full Screen option
 - Fixed Menu text and Game -> Menu crashes
