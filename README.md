@@ -123,10 +123,10 @@ TempGBA exposes a **start** and **end** scanline window. HBlank IRQs are only ra
 
 | Setting | Behavior |
 |---------|----------|
-| **Either start or end = `0`** | Window is **off**. HBlank IRQs are allowed on all lines (closest to unrestricted hardware behavior). |
+| **Either start or end = `0`** | Window is **off**. HBlank IRQs are allowed on all lines (closest to unrestricted hardware behavior). Required for some games to display graphics and text correctly e.g. Advance Wars |
 | **`1`–`160`** (default `1`–`160`) | IRQs only during the **visible** screen area. |
-| **`1`–`161`** | Practical **gpSP-kai-style** window: visible lines plus the first post-visible line. A good balanced preset when you want kai-like timing without hand-tuning. |
-| **`1`–`1`** | Effectively **disables almost all HBlank IRQs** (only line 1 can fire). Often makes games run **noticeably faster**, but mid-frame visual effects that depend on HBlank may glitch, disappear, or tear. |
+| **`1`–`161`** | Practical **gpSP-kai-style** window: visible lines plus the first post-visible line. A good balanced preset when you want kai-like timing without hand-tuning. e.g. gives better performance in Penny Racers without messing up graphics |
+| **`1`–`1`** | Effectively **disables almost all HBlank IRQs** (only line 1 can fire). Often makes games run **noticeably faster**, but mid-frame visual effects that depend on HBlank may glitch, disappear, or tear. Useful for better game performance at the expense of missing effects e.g. **Pokemon Unbound**|
 | **End in `161`–`227`** | Extends the window into **vblank-region** lines when a game still needs IRQs there. |
 
 **Tips**
