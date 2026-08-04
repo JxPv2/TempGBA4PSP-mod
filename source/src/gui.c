@@ -19,6 +19,7 @@
  */
 
 #include "common.h"
+#include "boxart.h"   // carousel / boxart support
 
 extern u32 option_swap_confirm_buttons;
 
@@ -361,6 +362,31 @@ static u16 hsv_to_color15(u32 h, u32 s, u32 v)
     return rgb_to_color15(C8TO5(r), C8TO5(g), C8TO5(b));
 }
 
+/* Dim an RGB565 colour by a brightness percentage (50, 75, or 100).
+ * Used to apply depth shading to folder frames and placeholders. */
+static u16 dim_color15(u16 color, u8 brightness)
+{
+    if (brightness == 100)
+        return color;
+
+    u16 r = (color >> 0) & 0x1F;
+    u16 g = (color >> 5) & 0x1F;
+    u16 b = (color >> 10) & 0x1F;
+
+    if (brightness == 50)
+    {
+        r >>= 1; g >>= 1; b >>= 1;
+    }
+    else if (brightness == 75)
+    {
+        r = (r >> 1) + (r >> 2);
+        g = (g >> 1) + (g >> 2);
+        b = (b >> 1) + (b >> 2);
+    }
+
+    return (r & 0x1F) | ((g & 0x1F) << 5) | ((b & 0x1F) << 10);
+}
+
 /* ------------------------------------------------------------------
    Recent ROMs management
    ------------------------------------------------------------------ */
@@ -681,7 +707,7 @@ void print_swap_aware(const char *src, u32 x, u32 y, u16 color, u16 bg)
 
 #define SCROLL_MENU_MAX_CHARS   ((SCREEN_IMAGE_POS_X - MENU_LIST_POS_X) / FONTWIDTH)
 #define SCROLL_TITLE_MAX_CHARS  ((PSP_SCREEN_WIDTH - 228) / FONTWIDTH)
-#define SCROLL_FILE_MAX_CHARS   ((DIR_LIST_POS_X - FILE_LIST_POS_X) / FONTWIDTH)
+#define SCROLL_FILE_MAX_CHARS   ((FILE_LIST_RIGHT_EDGE - FILE_LIST_POS_X) / FONTWIDTH)
 #define SCROLL_DIR_MAX_CHARS    ((PSP_SCREEN_WIDTH - DIR_LIST_POS_X) / FONTWIDTH)
 
 typedef struct {
@@ -1081,11 +1107,12 @@ s32 load_theme_config(void)
     return -1;
 }
 
-#define FILE_LIST_ROWS      (20)
-#define FILE_LIST_POS_X     (10) //18 default
-#define FILE_LIST_POS_Y     (16)
-#define DIR_LIST_POS_X      (360)
-#define PAGE_SCROLL_NUM     (10)
+#define FILE_LIST_ROWS        (20)
+#define FILE_LIST_POS_X       (10) //18 default
+#define FILE_LIST_POS_Y       (16)
+#define DIR_LIST_POS_X        (340)
+#define FILE_LIST_RIGHT_EDGE  (330)
+#define PAGE_SCROLL_NUM       (10)
 
 
 
@@ -1370,6 +1397,8 @@ char dir_state[MAX_PATH];
 char dir_cfg[MAX_PATH];
 char dir_snap[MAX_PATH];
 char dir_cheat[MAX_PATH];//cheat
+char dir_boxart[MAX_PATH];
+char dir_boxart_folders[MAX_PATH];
 
 u32 menu_cheat_page = 0;
 u32 ALIGN_DATA gamepad_config_line_to_button[] =
@@ -1405,6 +1434,142 @@ static void get_savestate_filename(u32 slot, char *name_buffer);
 static void get_snapshot_filename(char *name, const char *ext);
 static void save_bmp(const char *path, u16 *screen_image);
 
+/* ========================================================================
+ * Savestate preview extraction for file browser
+ *
+ * Savestate files (.svs) begin with a 240x160 RGB565 screenshot.
+ * We extract it and scale to 141x141 for the boxart preview panel.
+ * ======================================================================== */
+
+/* 5-slot RAM cache for savestate previews in carousel mode */
+typedef struct {
+    u16 *buffer;
+    char name[MAX_FILE];
+    u32 valid;
+} SavestatePreviewSlot;
+
+/* Static solid-color texture for NO IMG carousel slots.
+   Drawn through GE to avoid CPU cache vs. GE race on real PSP HW. */
+static u16 noimg_texture[BOXART_W * BOXART_H];
+static u16 noimg_texture_color = 0xFFFF; /* 0xFFFF = uninitialized */
+
+static SavestatePreviewSlot savestate_preview_cache[CAROUSEL_SLOTS];
+
+/* Nearest-neighbour downscale from 16-bit source to 141x141 */
+static void scale_nearest_16bit(u16 *src, u16 *dst, u32 src_w, u32 src_h, u32 src_pitch)
+{
+    u32 x, y;
+    for (y = 0; y < BOXART_H; y++)
+    {
+        u32 src_y = (y * src_h) / BOXART_H;
+        for (x = 0; x < BOXART_W; x++)
+        {
+            u32 src_x = (x * src_w) / BOXART_W;
+            dst[y * BOXART_W + x] = src[src_y * src_pitch + src_x];
+        }
+    }
+}
+
+/* Extract 141x141 preview from a .svs file.
+ * Returns malloc'd buffer, or NULL on failure. */
+static u16 *savestate_extract_preview(const char *path)
+{
+    SceUID fd;
+    u16 *src = NULL;
+    u16 *dst = NULL;
+
+    fd = sceIoOpen(path, PSP_O_RDONLY, 0);
+    if (fd < 0)
+        return NULL;
+
+    src = (u16 *)malloc(GBA_SCREEN_SIZE);
+    if (!src)
+        goto cleanup;
+
+    s32 n = sceIoRead(fd, src, GBA_SCREEN_SIZE);
+    if (n != (s32)GBA_SCREEN_SIZE)
+        goto cleanup;
+
+    dst = (u16 *)malloc(BOXART_W * BOXART_H * sizeof(u16));
+    if (!dst)
+        goto cleanup;
+
+    scale_nearest_16bit(src, dst, GBA_SCREEN_WIDTH, GBA_SCREEN_HEIGHT, GBA_SCREEN_WIDTH);
+
+    free(src);
+    sceIoClose(fd);
+    return dst;
+
+cleanup:
+    if (src) free(src);
+    if (dst) free(dst);
+    sceIoClose(fd);
+    return NULL;
+}
+
+/* Look up a savestate preview in the carousel RAM cache.
+ * If miss, extract from disk and store. Returns buffer or NULL. */
+static u16 *savestate_preview_get(const char *name)
+{
+    u32 i;
+    u32 empty_idx = (u32)-1;
+    char path[MAX_PATH];
+
+    if (!name || !name[0])
+        return NULL;
+
+    /* Search existing cache */
+    for (i = 0; i < CAROUSEL_SLOTS; i++)
+    {
+        if (savestate_preview_cache[i].valid &&
+            strcmp(savestate_preview_cache[i].name, name) == 0)
+        {
+            return savestate_preview_cache[i].buffer;
+        }
+        if (!savestate_preview_cache[i].valid && empty_idx == (u32)-1)
+            empty_idx = i;
+    }
+
+    /* Miss — extract from file */
+    sprintf(path, "%s%s", dir_state, name);
+    u16 *loaded = savestate_extract_preview(path);
+
+    /* Store in cache */
+    if (empty_idx != (u32)-1)
+    {
+        savestate_preview_cache[empty_idx].buffer = loaded;
+        savestate_preview_cache[empty_idx].valid = 1;
+        strncpy(savestate_preview_cache[empty_idx].name, name, MAX_FILE - 1);
+        savestate_preview_cache[empty_idx].name[MAX_FILE - 1] = '\0';
+        return loaded;
+    }
+
+    /* No empty slots — evict slot 0, shift down */
+    if (savestate_preview_cache[0].buffer)
+        free(savestate_preview_cache[0].buffer);
+    for (i = 1; i < CAROUSEL_SLOTS; i++)
+        savestate_preview_cache[i - 1] = savestate_preview_cache[i];
+
+    savestate_preview_cache[CAROUSEL_SLOTS - 1].buffer = loaded;
+    savestate_preview_cache[CAROUSEL_SLOTS - 1].valid = 1;
+    strncpy(savestate_preview_cache[CAROUSEL_SLOTS - 1].name, name, MAX_FILE - 1);
+    savestate_preview_cache[CAROUSEL_SLOTS - 1].name[MAX_FILE - 1] = '\0';
+    return loaded;
+}
+
+/* Clear the savestate preview cache */
+static void savestate_preview_clear(void)
+{
+    u32 i;
+    for (i = 0; i < CAROUSEL_SLOTS; i++)
+    {
+        if (savestate_preview_cache[i].buffer)
+            free(savestate_preview_cache[i].buffer);
+        savestate_preview_cache[i].buffer = NULL;
+        savestate_preview_cache[i].valid = 0;
+        savestate_preview_cache[i].name[0] = '\0';
+    }
+}
 
 void _flush_cache(void)
 {
@@ -1472,6 +1637,18 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
   u16 color_batt_life = color_batt_normal;
   u32 counter = 0;
 
+  char current_boxart_rom[MAX_FILE];
+  current_boxart_rom[0] = '\0';
+
+  /* ------------------------------------------------------------------
+     Carousel mode state
+     ------------------------------------------------------------------ */
+  u32 carousel_mode = 0;        /* 0 = list view, 1 = carousel view */
+  u32 prev_select_state = 0;    /* For edge-detecting SELECT button */
+  u32 carousel_sel = 0;         /* Unified selection: dirs first, then files */
+  u32 total_items = 0;          /* num_dirs + num_files */
+  u32 browsing_savestates = 0;  /* 1 = wildcards are .svs, use savestate screenshots */
+
   auto void filelist_term(void);
   auto void malloc_error(void);
 
@@ -1512,6 +1689,10 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
     chdir(default_dir_name);
   }
 
+  /* Detect if we're browsing savestate files (.svs) */
+  if (wildcards[0] != NULL && strcasecmp(wildcards[0], ".svs") == 0)
+    browsing_savestates = 1;
+
   /* Load recent ROMs list and validate entries */
   if (show_recent)
     load_recent_roms();
@@ -1550,12 +1731,14 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
     getcwd(current_dir_name, MAX_PATH);
     strcat(current_dir_name, "/");
 
-    if (strlen(strstr(current_dir_name, ":/")) != 2)
     {
-      dir_list[num[DIR_LIST]] = (char *)safe_malloc(strlen("..") + 1);
-
-      sprintf(dir_list[num[DIR_LIST]], "%s", "..");
-      num[DIR_LIST]++;
+      char *root_check = strstr(current_dir_name, ":/");
+      if (root_check == NULL || strlen(root_check) != 2)
+      {
+        dir_list[num[DIR_LIST]] = (char *)safe_malloc(strlen("..") + 1);
+        sprintf(dir_list[num[DIR_LIST]], "%s", "..");
+        num[DIR_LIST]++;
+      }
     }
 
     scePowerLock(0);
@@ -1639,6 +1822,24 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
       column = DIR_LIST;
     }
 
+    /* When entering a directory in carousel mode, land on first real item */
+    if (carousel_mode)
+    {
+      total_items = num[DIR_LIST] + num[FILE_LIST];
+      /* At root there is no "..", so start at index 0.
+         In subdirectories, index 0 is "..", so start at index 1. */
+      if (total_items > 0)
+      {
+        char *root_check = strstr(current_dir_name, ":/");
+        u32 at_root = (root_check != NULL && strlen(root_check) == 2);
+        carousel_sel = at_root ? 0 : ((total_items > 1) ? 1 : 0);
+      }
+      else
+      {
+        carousel_sel = 0;
+      }
+    }
+
     while (repeat)
     {
       clear_screen(COLOR15_TO_32(color_bg));
@@ -1671,7 +1872,14 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
 	  else
 		print_string_gbk(batt_str, BATT_STATUS_POS_X, 2, color_batt_life, BG_NO_FILL);
 
+		/* At root, Square/Back does nothing — show simplified hint */
+		{
+      char *root_check = strstr(current_dir_name, ":/");
+      if (root_check != NULL && strlen(root_check) == 2)
+        print_swap_aware(MSG[MSG_BROWSER_HELP_ROOT], 30, 258, color_help_text, BG_NO_FILL);
+      else
         print_swap_aware(MSG[MSG_BROWSER_HELP], 30, 258, color_help_text, BG_NO_FILL);
+    }
 
       char str_buffer_size[32];
       sprintf(str_buffer_size, MSG[MSG_BUFFER], gamepak_ram_buffer_size >> 20);
@@ -1697,8 +1905,8 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
               file_list_visible_rows = 5;
       }
 
-      // draw scroll bar
-      if (num[FILE_LIST] > file_list_visible_rows)
+      // draw scroll bar (hidden in carousel mode)
+      if (!carousel_mode && num[FILE_LIST] > file_list_visible_rows)
       {
         u32 sbar_top, sbar_bottom, sbar_t, sbar_b, sbar_h;
         u32 sbar_y1i, sbar_y2i;
@@ -1724,6 +1932,163 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
         draw_box_fill(SBAR_X1I, sbar_y1i,    SBAR_X2I, sbar_y2i,    color_scroll_bar);
       }
 
+      /* ================================================================
+         CAROUSEL: 5-slot horizontal cover flow
+         ================================================================ */
+      if (carousel_mode)
+      {
+        /* Unified index: 0..num_dirs-1 = dirs, num_dirs..end = files */
+        total_items = num[DIR_LIST] + num[FILE_LIST];
+        u32 sel = carousel_sel;
+
+        /* Symmetric layout: mirror left/right around screen center (240)
+         * Draw order (z-index, back to front): outerL, outerR, innerL, innerR, center */
+        const u32 slot_draw_order[CAROUSEL_SLOTS] = { 0, 4, 1, 3, 2 };
+        const u32 slot_x[CAROUSEL_SLOTS] = {
+          CAROUSEL_X_OUTER_L,
+          CAROUSEL_X_INNER_L,
+          CAROUSEL_X_CENTER,
+          CAROUSEL_X_INNER_R,
+          CAROUSEL_X_OUTER_R
+        };
+        const u32 slot_y[CAROUSEL_SLOTS] = {
+          CAROUSEL_Y_OUTER_L,
+          CAROUSEL_Y_INNER_L,
+          CAROUSEL_Y_CENTER,
+          CAROUSEL_Y_INNER_R,
+          CAROUSEL_Y_OUTER_R
+        };
+        const u32 slot_w[CAROUSEL_SLOTS] = {
+          CAROUSEL_W_OUTER, CAROUSEL_W_INNER, CAROUSEL_W_CENTER,
+          CAROUSEL_W_INNER, CAROUSEL_W_OUTER
+        };
+        const u32 slot_h[CAROUSEL_SLOTS] = {
+          CAROUSEL_H_OUTER, CAROUSEL_H_INNER, CAROUSEL_H_CENTER,
+          CAROUSEL_H_INNER, CAROUSEL_H_OUTER
+        };
+        const u8 slot_bright[CAROUSEL_SLOTS] = {
+          CAROUSEL_BRIGHT_OUTER, CAROUSEL_BRIGHT_INNER, CAROUSEL_BRIGHT_CENTER,
+          CAROUSEL_BRIGHT_INNER, CAROUSEL_BRIGHT_OUTER
+        };
+
+        /* Draw slots back-to-front for proper depth (outer → inner → center) */
+        for (i = 0; i < CAROUSEL_SLOTS; i++)
+        {
+          u32 slot = slot_draw_order[i];
+          s32 idx = (s32)sel + (s32)slot - (s32)CAROUSEL_CENTER;
+
+          if (total_items > 0)
+          {
+            if (total_items >= CAROUSEL_SLOTS)
+            {
+              /* 5+ items: infinite wrap */
+              idx = ((idx % (s32)total_items) + (s32)total_items) % (s32)total_items;
+            }
+            else
+            {
+              /* < 5 items: no wrap, only draw valid indices */
+              if (idx < 0 || idx >= (s32)total_items)
+                continue;
+            }
+          }
+          else
+          {
+            idx = -1; /* nothing to draw */
+          }
+
+          if (idx >= 0 && total_items > 0)
+          {
+            u32 is_dir = (idx < (s32)num[DIR_LIST]);
+            const char *name = is_dir ? dir_list[idx] : file_list[idx - num[DIR_LIST]];
+            u8 bright = slot_bright[slot];
+            u16 border_color = (slot == CAROUSEL_CENTER) ? color_active_item
+                                                         : dim_color15(color_inactive_item, bright);
+
+            if (is_dir)
+            {
+              /* Folder: draw frame first, then optional inset PNG */
+              u16 folder_fill = dim_color15(color_inactive_dir, bright);
+              boxart_carousel_draw_folder_frame(slot_x[slot], slot_y[slot],
+                                                slot_w[slot], slot_h[slot],
+                                                folder_fill, border_color);
+
+              /* Try to load custom folder art (skipped automatically for ".." or missing dir) */
+              u16 *folder_buf = boxart_carousel_get(name, 1);
+              if (folder_buf)
+              {
+                /* Folder body is 75% of slot height, bottom-aligned.
+                   Icon must be inset inside the actual folder body, below the tab. */
+                u16 folder_h = (slot_h[slot] * 3) / 4;
+                u16 folder_y = slot_y[slot] + slot_h[slot] - folder_h;
+                u16 tab_h = folder_h / 5;
+                u16 inset_x = slot_x[slot] + 2;
+                u16 inset_y = folder_y + tab_h + 2;
+                u16 inset_w = (slot_w[slot] > 4) ? slot_w[slot] - 4 : 1;
+                u16 inset_h = (folder_h > tab_h + 4) ? folder_h - tab_h - 4 : 1;
+                boxart_carousel_draw(folder_buf, inset_x, inset_y, inset_w, inset_h, bright);
+              }
+
+            }
+            else
+            {
+              /* ROM / savestate: preview or "NO IMG" placeholder */
+              u16 *buf = NULL;
+
+              if (browsing_savestates)
+                buf = savestate_preview_get(name);
+              else
+                buf = boxart_carousel_get(name, 0);
+
+              if (buf)
+              {
+                boxart_carousel_draw(buf, slot_x[slot], slot_y[slot], slot_w[slot], slot_h[slot], bright);
+              }
+              else
+              {
+                u16 noimg_base = color_scroll_bar;
+                u32 tex_i;
+
+                /* Rebuild texture if theme color changed */
+                if (noimg_texture_color != noimg_base)
+                {
+                  for (tex_i = 0; tex_i < BOXART_W * BOXART_H; tex_i++)
+                    noimg_texture[tex_i] = noimg_base;
+                  noimg_texture_color = noimg_base;
+                }
+
+                /* Draw through GE pipeline — same as image slots */
+                boxart_carousel_draw(noimg_texture, slot_x[slot], slot_y[slot],
+                                     slot_w[slot], slot_h[slot], bright);
+
+                /* Text label */
+                u16 noimg_text = dim_color15(color_inactive_item, bright);
+                const char *ph = "NO IMG";
+                u32 ph_x = slot_x[slot] + (slot_w[slot] - (strlen(ph) * FONTWIDTH)) / 2;
+                u32 ph_y = slot_y[slot] + (slot_h[slot] - FONTHEIGHT) / 2;
+                print_string(ph, ph_x, ph_y, noimg_text, BG_NO_FILL);
+              }
+
+              /* Border around center slot only — non-center slots must not
+                 draw outside their bounds to avoid flicker on real PSP HW */
+              if (slot == CAROUSEL_CENTER)
+              {
+                draw_box_line(slot_x[slot] - 1, slot_y[slot] - 1,
+                              slot_x[slot] + slot_w[slot], slot_y[slot] + slot_h[slot], border_color);
+              }
+            }
+          }
+        }
+
+        /* Selected item name centered below center slot */
+        if (total_items > 0 && sel < total_items)
+        {
+          const char *sel_name = (sel < num[DIR_LIST]) ? dir_list[sel] : file_list[sel - num[DIR_LIST]];
+          u32 name_y = CAROUSEL_Y_CENTER + CAROUSEL_H_CENTER + 10;
+          print_string(sel_name, X_POS_CENTER, name_y, color_active_item, BG_NO_FILL);
+        }
+      }
+      else
+      {
       /* --- Recent Games Section --- */
       file_list_y_offset = 0;
       if (!is_recent_roms_empty())
@@ -1771,7 +2136,9 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
         file_list_y_offset = (num_recent_roms + 2) * FONTHEIGHT;
       }
 
-      /* --- Normal File List --- */
+        /* ================================================================
+           LIST VIEW: original file browser rendering
+           ================================================================ */
       for (i = 0; i < file_list_visible_rows; i++)
       {
         current_file_number = i + scroll_value[FILE_LIST];
@@ -1821,9 +2188,70 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
           print_string(FONT_CURSOR_DOWN_FILL, PSP_SCREEN_WIDTH - (FONTWIDTH * 2), FILE_LIST_POS_Y + ((FILE_LIST_ROWS - 1) * FONTHEIGHT), color_scroll_bar, color_bg);
       }
 
+
+        /* Draw boxart or savestate preview for selected item (list view only) */
+        if (browsing_savestates && column == FILE_LIST && num[FILE_LIST] > 0)
+        {
+          u16 *svs_buf = savestate_preview_get(file_list[selection[FILE_LIST]]);
+          if (svs_buf)
+          {
+            blit_to_screen(svs_buf, BOXART_W, BOXART_H, SCREEN_IMAGE_POS_X+108, SCREEN_IMAGE_POS_Y+70);
+            draw_box_line(SCREEN_IMAGE_POS_X+108 - 1, SCREEN_IMAGE_POS_Y+70 - 1,
+                          SCREEN_IMAGE_POS_X+108 + BOXART_W, SCREEN_IMAGE_POS_Y+70 + BOXART_H,
+                          color_inactive_item);
+          }
+        }
+        else
+        {
+          boxart_draw(SCREEN_IMAGE_POS_X+108, SCREEN_IMAGE_POS_Y+70, color_inactive_item);
+        }
+      }
+
       __draw_volume_status(1);
       flip_screen(1);
 
+      /* CAROUSEL: SELECT button toggles between list and carousel views */
+      {
+        u32 curr_select_state = get_pad_input(PSP_CTRL_SELECT);
+        if (curr_select_state && !prev_select_state)
+        {
+          if (!carousel_mode)
+          {
+            /* List → Carousel: translate current selection to unified index */
+            if (column == FILE_LIST)
+              carousel_sel = num[DIR_LIST] + selection[FILE_LIST];
+            else
+              carousel_sel = selection[DIR_LIST];
+            carousel_mode = 1;
+          }
+          else
+          {
+            /* Carousel → List: land on top of file list if files exist, else dir list */
+            carousel_mode = 0;
+            if (num[FILE_LIST] > 0)
+            {
+              column = FILE_LIST;
+              selection[FILE_LIST] = 0;
+              scroll_value[FILE_LIST] = 0;
+              in_scroll[FILE_LIST] = 0;
+            }
+            else
+            {
+              column = DIR_LIST;
+              selection[DIR_LIST] = 0;
+              scroll_value[DIR_LIST] = 0;
+              in_scroll[DIR_LIST] = 0;
+            }
+          }
+          /* Clear the old boxart state when switching modes */
+          current_boxart_rom[0] = '\0';
+          boxart_free();
+          savestate_preview_clear();
+          if (!carousel_mode)
+            boxart_carousel_clear();
+        }
+        prev_select_state = curr_select_state;
+      }
 
       gui_action = get_gui_input();
 
@@ -1835,7 +2263,12 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
       switch (gui_action)
       {
         case CURSOR_DOWN:
-          if (in_recent_section)
+          if (carousel_mode)
+          {
+            if (total_items > 0)
+              carousel_sel = (carousel_sel + 1) % total_items;
+          }
+          else if (in_recent_section)
           {
             if (recent_selection < num_recent_roms - 1)
             {
@@ -1878,7 +2311,12 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
           break;
 
         case CURSOR_RTRIGGER:
-          if (num[column] > PAGE_SCROLL_NUM)
+          if (carousel_mode)
+          {
+            if (total_items > 0)
+              carousel_sel = (carousel_sel + 3) % total_items;
+          }
+          else if (num[column] > PAGE_SCROLL_NUM)
           {
             if (selection[column] < (num[column] - PAGE_SCROLL_NUM))
             {
@@ -1926,7 +2364,12 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
           break;
 
         case CURSOR_UP:
-          if (!in_recent_section && column == FILE_LIST && selection[FILE_LIST] == 0 && !is_recent_roms_empty())
+          if (carousel_mode)
+          {
+            if (total_items > 0)
+              carousel_sel = (carousel_sel + total_items - 1) % total_items;
+          }
+          else if (!in_recent_section && column == FILE_LIST && selection[FILE_LIST] == 0 && !is_recent_roms_empty())
           {
             /* Move from file list to recent section */
             in_recent_section = 1;
@@ -1964,7 +2407,12 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
           break;
 
         case CURSOR_LTRIGGER:
-          if (selection[column] >= PAGE_SCROLL_NUM)
+          if (carousel_mode)
+          {
+            if (total_items > 0)
+              carousel_sel = (carousel_sel + total_items - 3) % total_items;
+          }
+          else if (selection[column] >= PAGE_SCROLL_NUM)
           {
             selection[column] -= PAGE_SCROLL_NUM;
 
@@ -1994,23 +2442,78 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
           break;
 
         case CURSOR_RIGHT:
-          if (column == FILE_LIST)
+          if (carousel_mode)
+          {
+            /* CAROUSEL: scroll right through unified strip (infinite wrap) */
+            if (total_items > 0)
+              carousel_sel = (carousel_sel + 1) % total_items;
+          }
+          else if (column == FILE_LIST)
           {
             if (num[DIR_LIST] != 0)
+            {
               column = DIR_LIST;
+              in_recent_section = 0;
+              /* Clamp directory scroll to new full-height view */
+              if (scroll_value[DIR_LIST] > num[DIR_LIST] - 20)
+                scroll_value[DIR_LIST] = (num[DIR_LIST] > 20) ? num[DIR_LIST] - 20 : 0;
+            }
           }
           break;
 
         case CURSOR_LEFT:
-          if (column == DIR_LIST)
+          if (carousel_mode)
           {
-            if (num[FILE_LIST] != 0)
+            /* CAROUSEL: scroll left through unified strip (infinite wrap) */
+            if (total_items > 0)
+              carousel_sel = (carousel_sel + total_items - 1) % total_items;
+          }
+          else if (column == DIR_LIST)
+          {
+            /* Allow LEFT if there are files OR recent games to go back to */
+            if (num[FILE_LIST] != 0 || !is_recent_roms_empty())
+            {
               column = FILE_LIST;
+
+              /* If recent games exist, land in the recent section on the FIRST item */
+              if (!is_recent_roms_empty())
+              {
+                in_recent_section = 1;
+                recent_selection = 0;
+              }
+              else
+              {
+                in_recent_section = 0;
+              }
+
+              /* Clamp directory scroll to shrunk view when returning to files */
+              if (scroll_value[DIR_LIST] > num[DIR_LIST] - 8)
+                scroll_value[DIR_LIST] = (num[DIR_LIST] > 8) ? num[DIR_LIST] - 8 : 0;
+              if (in_scroll[DIR_LIST] >= 8)
+                in_scroll[DIR_LIST] = 7;
+            }
           }
           break;
 
         case CURSOR_SELECT:
-          if (in_recent_section)
+          if (carousel_mode)
+          {
+            if (carousel_sel < num[DIR_LIST])
+            {
+              /* Folder selected in carousel — chdir and stay in carousel */
+              repeat = 0;
+              current_boxart_rom[0] = '\0';
+              chdir(dir_list[carousel_sel]);
+            }
+            else if (num[FILE_LIST] != 0)
+            {
+              /* ROM selected in carousel */
+              repeat = 0;
+              return_value = 0;
+              strcpy(result, file_list[carousel_sel - num[DIR_LIST]]);
+            }
+          }
+          else if (in_recent_section)
           {
             /* Load selected recent ROM */
             char *recent_path = recent_roms[recent_selection].path;
@@ -2035,6 +2538,7 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
           else if (column == DIR_LIST)
           {
             repeat = 0;
+            current_boxart_rom[0] = '\0';
             chdir(dir_list[selection[DIR_LIST]]);
           }
           else
@@ -2054,6 +2558,7 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
             break;
 
           repeat = 0;
+          current_boxart_rom[0] = '\0';
           chdir("..");
           break;
 
@@ -2069,8 +2574,88 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
           break;
       }
 
+      /* Load boxart / savestate preview for currently selected item */
+      if (carousel_mode)
+      {
+        /* CAROUSEL: pre-load all 5 visible slots into RAM cache */
+        if (total_items > 0)
+        {
+          s32 offset;
+          for (offset = -CAROUSEL_CENTER; offset <= CAROUSEL_CENTER; offset++)
+          {
+            s32 idx = (s32)carousel_sel + offset;
+            if (total_items >= CAROUSEL_SLOTS)
+            {
+              idx = ((idx % (s32)total_items) + (s32)total_items) % (s32)total_items;
+            }
+            else
+            {
+              if (idx < 0 || idx >= (s32)total_items) continue;
+            }
+            if (idx < (s32)num[DIR_LIST])
+            {
+              if (strcmp(dir_list[idx], "..") != 0)
+                boxart_carousel_get(dir_list[idx], 1);
+            }
+            else
+            {
+              const char *fname = file_list[idx - num[DIR_LIST]];
+              if (browsing_savestates)
+                savestate_preview_get(fname);
+              else
+                boxart_carousel_get(fname, 0);
+            }
+          }
+        }
+      }
+      /* Recent ROMs section: load boxart for selected recent game */
+      else if (in_recent_section && num_recent_roms > 0)
+      {
+        const char *recent_path = recent_roms[recent_selection].path;
+        const char *rom_name = strrchr(recent_path, '/');
+        if (rom_name != NULL)
+          rom_name++;
+        else
+          rom_name = recent_path;
+
+        if (strcmp(current_boxart_rom, rom_name) != 0)
+        {
+          strncpy(current_boxart_rom, rom_name, sizeof(current_boxart_rom) - 1);
+          current_boxart_rom[sizeof(current_boxart_rom) - 1] = '\0';
+          boxart_load(rom_name);
+        }
+      }
+      else if (column == FILE_LIST && num[FILE_LIST] > 0)
+      {
+        const char *sel_file = file_list[selection[FILE_LIST]];
+        if (strcmp(current_boxart_rom, sel_file) != 0)
+        {
+          strncpy(current_boxart_rom, sel_file, sizeof(current_boxart_rom) - 1);
+          current_boxart_rom[sizeof(current_boxart_rom) - 1] = '\0';
+          if (browsing_savestates)
+          {
+            boxart_free();
+            /* Savestate preview is loaded on-demand in the draw block */
+          }
+          else
+          {
+            boxart_load(sel_file);
+          }
+        }
+      }
+      else
+      {
+        if (current_boxart_rom[0] != '\0')
+        {
+          current_boxart_rom[0] = '\0';
+          boxart_free();
+        }
+      }
     } /* end while (repeat) */
 
+    boxart_free();
+    boxart_carousel_clear();
+    savestate_preview_clear();
     filelist_term();
 
   } /* end while (return_value == 1) */
@@ -5058,6 +5643,8 @@ s32 load_dir_cfg(char *file_name)
   const char item_cfg[]   = "game_config_directory";
   const char item_snap[]  = "snapshot_directory";
   const char item_cheat[] = "cheat_directory";
+  const char item_boxart[] = "boxart_directory";
+  const char item_boxart_folders[] = "folder_boxart_directory";
 
   FILE *dir_config;
   SceUID check_dir = -1;
@@ -5127,6 +5714,8 @@ s32 load_dir_cfg(char *file_name)
   dir_cfg[0]    = 0;
   dir_snap[0]   = 0;
   dir_cheat[0]  = 0;
+  dir_boxart[0] = 0;
+  dir_boxart_folders[0] = 0;
 
   dir_config = fopen(file_name, "r");
 
@@ -5144,6 +5733,8 @@ s32 load_dir_cfg(char *file_name)
         set_directory(dir_cfg,   item_cfg);
         set_directory(dir_snap,  item_snap);
         set_directory(dir_cheat, item_cheat);
+        set_directory(dir_boxart, item_boxart);
+        set_directory(dir_boxart_folders, item_boxart_folders);
       }
     }
 
@@ -5155,6 +5746,8 @@ s32 load_dir_cfg(char *file_name)
     check_directory(dir_cfg,   item_cfg);
     check_directory(dir_snap,  item_snap);
     check_directory(dir_cheat, item_cheat);
+    check_directory(dir_boxart, item_boxart);
+    check_directory(dir_boxart_folders, item_boxart_folders);
 
       if (str_line > 7)
       {
@@ -5175,6 +5768,8 @@ s32 load_dir_cfg(char *file_name)
   strcpy(dir_cfg,   main_path);
   strcpy(dir_snap,  main_path);
   strcpy(dir_cheat, main_path);
+  strcpy(dir_boxart, main_path);
+  strcpy(dir_boxart_folders, main_path);
   apply_theme(option_theme);
   return -1;
 }

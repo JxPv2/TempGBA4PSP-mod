@@ -9,7 +9,10 @@
   "ROM Cache %2dMB",
 
   // MSG_BROWSER_HELP
-  FONT_BTN_CIRCLE_GBK ":Seleziona   " FONT_BTN_SQUARE_GBK ":Cartella superiore  " FONT_UP_DIRECTORY_GBK "   " FONT_BTN_CROSS_GBK ":Esci",
+  FONT_BTN_CIRCLE_GBK ":Seleziona   " FONT_BTN_SQUARE_GBK ":Cartella superiore  " FONT_UP_DIRECTORY_GBK "   SELECT:Cambia vista   " FONT_BTN_CROSS_GBK ":Esci",
+
+  // MSG_BROWSER_HELP_ROOT
+  FONT_BTN_CIRCLE_GBK ":Seleziona   SELECT: Cambia vista   " FONT_BTN_CROSS_GBK ":Esci",
 
   // MSG_MENU_DATE_FMT_0
   "%4d/%2d/%2d %-3s %2d:%02d",

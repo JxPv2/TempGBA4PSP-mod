@@ -9,7 +9,10 @@
   "ROM チェイス %2dMB",
 
   // MSG_BROWSER_HELP
-  FONT_BTN_CIRCLE_GBK ":選択   " FONT_BTN_SQUARE_GBK ":親フォルダ " FONT_UP_DIRECTORY_GBK "   " FONT_BTN_CROSS_GBK ":終了",
+  FONT_BTN_CIRCLE_GBK ":選択   " FONT_BTN_SQUARE_GBK ":親フォルダ " FONT_UP_DIRECTORY_GBK "   SELECT:表示を切り替える   " FONT_BTN_CROSS_GBK ":終了",
+
+  // MSG_BROWSER_HELP_ROOT
+  FONT_BTN_CIRCLE_GBK ":選択   SELECT: 表示を切り替える   " FONT_BTN_CROSS_GBK ":終了",
 
   // MSG_MENU_DATE_FMT_0
   "%4d/%2d/%2d %-3s %2d:%02d",
