@@ -8,13 +8,13 @@ Only **confirmed** defects are listed. Design gaps, hardening ideas, and intenti
 
 ## Summary
 
-| ID | Component | Nature |
-|----|-----------|--------|
-| H1 | PC **builder tool** | Breaks documented PBP-path override in `emulator_path.txt` |
-| H5 | **Emulator** | Recent list wrong for single-game / device paths |
-| M1 | **Emulator** | Recent + D-pad focus mismatch |
-| M2 | **Emulator** | R-scroll polish with Recent visible |
-| L1 | **Launcher stub** | Error-message typo |
+| ID | Priority | Component | Nature |
+|----|----------|-----------|--------|
+| H1 | High | PC **builder tool** | Breaks documented PBP-path override in `emulator_path.txt` |
+| M1 | Medium | **Emulator** | Recent + D-pad focus mismatch |
+| M2 | Medium | **Emulator** | R-scroll polish with Recent visible |
+| L1 | Low | **Launcher stub** | Error-message typo |
+| H5 | Low | **Emulator** | Single-game boot paths incorrectly call `add_recent_rom` |
 
 ---
 
@@ -62,26 +62,6 @@ if p and not p.endswith("/") and not p.lower().endswith(".pbp"):
 ```
 
 No emulator or stub change required for this one.
-
----
-
-## H5 — `add_recent_rom` corrupts PSP device paths
-
-**Where:** Emulator — `source/src/gui.c` (~486–491)
-
-### What’s wrong
-
-Absolute paths are detected only via `filename[0] == '/'`. On PSP, launcher and many paths look like `ms0:/…` / `ef0:/…`.
-
-### How it fails
-
-- Menu browser: passes a **basename** after `chdir` → `getcwd` + name works.
-- Single-game: `argv[1]` or `dir_roms + "game.gba"` is already `ms0:/…` → stored as `cwd + "/" + "ms0:/…"`, then validation drops it.
-- Effect: Recent list doesn’t keep games started from a bubble / `game.gba`. Load itself still works.
-
-### Proposed fix
-
-Treat device paths as absolute, e.g. `p[0]=='/'` **or** `strstr(p, ":/") != NULL`, then copy as-is instead of prefixing cwd.
 
 ---
 
@@ -136,3 +116,32 @@ Cosmetics only — path is still shown via `error_screen`’s third argument. Au
 ### Proposed fix
 
 Put the expected folder name in the format (`"... Expected: %s"`, `DEFAULT_EMU_FOLDER`) or drop the unused argument and hard-code the name in the string.
+
+---
+
+## H5 — Single-game boot paths should not update Recent ROMs
+
+**Where:** Emulator — `source/src/main.c` (~898, ~918)  
+**Priority:** Low
+
+### Intent
+
+There are two single-game boot modes:
+
+1. **Bubble / launcher** — ROM path passed as `argv[1]`
+2. **GrabowskiDev-style drop-in** — `roms/game.gba` auto-loads when present
+
+Both are fixed single-ROM packages. Recent ROMs is for the multi-game file browser only. Neither single-game mode should add anything to the Recent list.
+
+### What’s wrong
+
+Both paths still call `add_recent_rom` after a successful load. That is unnecessary (and for `game.gba`, against drop-in intent). Side effects can include writing a useless or corrupt `recent.cfg` entry (device paths are also mishandled by `add_recent_rom`’s absolute-path check), even though the user never needs Recent in these modes.
+
+### Proposed fix
+
+Skip `add_recent_rom` on both single-game boot paths:
+
+- Remove / don’t call it after `argv[1]` load
+- Remove / don’t call it after `roms/game.gba` load
+
+Keep `add_recent_rom` only for the normal browser / menu load path. Hardening `add_recent_rom` for `ms0:` absolutes is optional and not required to satisfy this bug once those callers are removed.
