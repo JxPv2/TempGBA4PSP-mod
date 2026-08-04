@@ -29,7 +29,7 @@ extern char dir_cfg[MAX_PATH];
 extern char dir_snap[MAX_PATH];
 extern char dir_cheat[MAX_PATH];
 
-s32 load_file(const char **wildcards, char *result, char *default_dir_name);
+s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 show_recent);
 
 s32 load_game_config_file(void);
 s32 load_config_file(void);
@@ -47,5 +47,17 @@ extern u32 savestate_slot;
 u32 action_loadstate(void);
 u32 action_savestate(void);
 
+/* Theme colors — defined in gui.c, accessible everywhere via common.h */
+extern u16 color_bg;
+extern u16 color_rom_info;
+extern u16 color_active_item;
+extern u16 color_inactive_item;
+extern u16 color_tooltip_text;
+extern u16 color_help_text;
+extern u16 color_inactive_dir;
+extern u16 color_scroll_bar;
+extern u16 color_batt_normal;
+extern u16 color_batt_low;
+extern u16 color_batt_charg;
 
 #endif /* GUI_H */

@@ -21,6 +21,11 @@
 
 #include "common.h"
 
+/* Forward declarations for recent ROMs functions (defined in gui.c) */
+extern void load_recent_roms(void);
+extern void add_recent_rom(const char *filename);
+
+
 
 // Main Thread Params
 #define PRIORITY       (32)
@@ -63,6 +68,7 @@ int date_format = 0;
 u32 enable_home_menu = 1;
 
 u32 sleep_flag = 0;
+u32 sleep_auto_saved = 0;
 
 u32 synchronize_flag = 1;
 u32 psp_fps_debug = 0;
@@ -130,7 +136,7 @@ int main(int argc, char *argv[]);
 int user_main(int argc, char *argv[]);
 
 static void init_main(void);
-static void setup_main(void);
+static void setup_main(const char *eboot_path);
 static void load_setting_cfg(void);
 static void load_bios_file(void);
 static int load_ku_bridge_prx(int devkit_version);
@@ -576,15 +582,15 @@ static void synchronize(void)
     if (reg[CPU_HALT_STATE] == CPU_STOP)
     {
       clear_screen(0);
-	  if (option_language == 0)
-      print_string(MSG[MSG_GBA_SLEEP_MODE], X_POS_CENTER, 130, COLOR15_WHITE, BG_NO_FILL);
-	  else
-      print_string_gbk(MSG[MSG_GBA_SLEEP_MODE], X_POS_CENTER, 130, COLOR15_WHITE, BG_NO_FILL);
+      if (option_language == 0)
+        print_string(MSG[MSG_GBA_SLEEP_MODE], X_POS_CENTER, 130, color_active_item, BG_NO_FILL);
+      else
+        print_string_gbk(MSG[MSG_GBA_SLEEP_MODE], X_POS_CENTER, 130, color_active_item, BG_NO_FILL);
     }
 
     // PSP controller - hold
     if (get_pad_input(PSP_CTRL_HOLD) != 0)
-      print_string(FONT_KEY_ICON, 6, 258, COLOR15_YELLOW, BG_NO_FILL);
+      print_string(FONT_KEY_ICON, 6, 258, color_batt_low, BG_NO_FILL);
 
     // fps
     if (psp_fps_debug != 0)
@@ -599,19 +605,19 @@ static void synchronize(void)
   if (!synchronize_flag)
   {
     if (psp_fps_debug != 0)
-	{
-		if (option_language == 0)
-			print_string(MSG[MSG_TURBO], 0, 12, COLOR15_WHITE, COLOR15_BLACK);
-		else
-			print_string_gbk(MSG[MSG_TURBO], 0, 12, COLOR15_WHITE, COLOR15_BLACK);
-	}
-	else
-	{
-		if (option_language == 0)
-		print_string(MSG[MSG_TURBO], 0, 0, COLOR15_WHITE, COLOR15_BLACK);
-		else
-		print_string_gbk(MSG[MSG_TURBO], 0, 0, COLOR15_WHITE, COLOR15_BLACK);
-	}
+    {
+      if (option_language == 0)
+        print_string(MSG[MSG_TURBO], 0, 12, COLOR15_WHITE, COLOR15_BLACK);
+      else
+        print_string_gbk(MSG[MSG_TURBO], 0, 12, COLOR15_WHITE, COLOR15_BLACK);
+    }
+    else
+    {
+      if (option_language == 0)
+        print_string(MSG[MSG_TURBO], 0, 0, COLOR15_WHITE, COLOR15_BLACK);
+      else
+        print_string_gbk(MSG[MSG_TURBO], 0, 0, COLOR15_WHITE, COLOR15_BLACK);
+    }
     used_frameskip_type = FRAMESKIP_MANUAL;
     used_frameskip_value = 4;
   }
@@ -771,7 +777,43 @@ static void load_bios_file(void)
   }
 }
 
-static void setup_main(void)
+/* Find the emulator's home directory.
+   Uses argv[0] (works for XMB, chain-load, PSPLink, any folder depth).
+   Falls back to getcwd(). */
+static void find_main_path(const char *eboot_path)
+{
+    main_path[0] = '\0';
+
+    /* Strategy 1: argv[0] directory */
+    if (eboot_path != NULL && eboot_path[0] != '\0' && strchr(eboot_path, '/') != NULL)
+    {
+        char temp[MAX_PATH];
+        strncpy(temp, eboot_path, sizeof(temp) - 1);
+        temp[sizeof(temp) - 1] = '\0';
+        char *slash = strrchr(temp, '/');
+        if (slash != NULL)
+        {
+            *(slash + 1) = '\0';
+            strcpy(main_path, temp);
+            return;
+        }
+    }
+
+    /* Strategy 2: getcwd() — last resort */
+    {
+        char cwd[MAX_PATH];
+        if (getcwd(cwd, MAX_PATH) != NULL && cwd[0] != '\0')
+        {
+            size_t len = strlen(cwd);
+            if (len > 0 && cwd[len - 1] != '/')
+                snprintf(main_path, sizeof(main_path), "%s/", cwd);
+            else
+                strcpy(main_path, cwd);
+        }
+    }
+}
+
+static void setup_main(const char *eboot_path)
 {
   scePowerLock(0);
 
@@ -790,9 +832,7 @@ static void setup_main(void)
   init_video(devkit_version);
   video_resolution_large();
 
-  // Copy the directory path of the executable into main_path
-  getcwd(main_path, MAX_PATH);
-  strcat(main_path, "/");
+  find_main_path(eboot_path);
 
   sceKernelRegisterSubIntrHandler(PSP_VBLANK_INT, 0, vblank_interrupt_handler, NULL);
   sceKernelEnableSubIntr(PSP_VBLANK_INT, 0);
@@ -808,6 +848,7 @@ static void setup_main(void)
 
   load_config_file();
   load_theme_config();
+  load_recent_roms();
 
   setup_callbacks();
   sceImposeSetHomePopup(enable_home_menu ^ 1);
@@ -839,11 +880,13 @@ int user_main(int argc, char *argv[])
 {
   char load_filename[MAX_FILE];
   const char *file_ext[] = { ".zip", ".gba", ".bin", ".agb", ".gbz", NULL };
+  u32 rom_loaded = 0;
 
-  setup_main();
+  setup_main((argc > 0 && argv[0] != NULL) ? argv[0] : NULL);
 
   gamepak_filename[0] = 0;
 
+  /* Priority 1: launcher or file manager passed a ROM path */
   if (argc > 1)
   {
     if (load_gamepak((char *)argv[1]) < 0)
@@ -852,7 +895,10 @@ int user_main(int argc, char *argv[])
       error_msg(MSG[MSG_ERR_LOAD_GAMEPACK], CONFIRMATION_QUIT);
       quit();
     }
+    add_recent_rom(argv[1]);
+    rom_loaded = 1;
   }
+  /* Priority 2: pre-installed game.gba for single-game packages */
   else
   {
     /* Drop-in compatible with GrabowskiDev single-game installs: when
@@ -867,8 +913,13 @@ int user_main(int argc, char *argv[])
         error_msg(MSG[MSG_ERR_LOAD_GAMEPACK], CONFIRMATION_CONT);
         menu();
       }
+      else
+      {
+        add_recent_rom(load_filename);
+        rom_loaded = 1;
+      }
     }
-    else if (load_file(file_ext, load_filename, dir_roms) < 0)
+    else if (load_file(file_ext, load_filename, dir_roms, 1) < 0)
     {
       menu();
     }
@@ -878,28 +929,36 @@ int user_main(int argc, char *argv[])
       error_msg(MSG[MSG_ERR_LOAD_GAMEPACK], CONFIRMATION_CONT);
       menu();
     }
+    else
+    {
+      add_recent_rom(load_filename);
+      rom_loaded = 1;
+    }
   }
 
-  reset_gba();
+  if (rom_loaded)
+  {
+    reset_gba();
 
-  set_cpu_clock(option_clock_speed);
+    set_cpu_clock(option_clock_speed);
 
-  sceDisplayWaitVblankStart();
-  video_resolution_small();
+    sceDisplayWaitVblankStart();
+    video_resolution_small();
 
-  sound_pause = 0;
+    sound_pause = 0;
 
-  // We'll never actually return from here.
-  execute_arm_translate(reg[EXECUTE_CYCLES]);
+    // We'll never actually return from here.
+    execute_arm_translate(reg[EXECUTE_CYCLES]);
+  }
 
+  /* If we get here, menu() returned without loading a ROM */
   return 0;
 }
 
 int main(int argc, char *argv[])
 {
-  user_main(argc, argv);
-
-  return 0;
+    user_main(argc, argv);
+    return 0;
 }
 
 
@@ -933,6 +992,12 @@ void reset_gba(void)
 
 static void psp_sleep_loop(void)
 {
+  if (!sleep_auto_saved && gamepak_filename[0] != '\0')
+  {
+    auto_savestate_sleep();
+    sleep_auto_saved = 1;
+  }
+
   if (FILE_CHECK_VALID(gamepak_file_large))
   {
     s32 i;
@@ -982,6 +1047,11 @@ static int power_callback(int unknown, int powerInfo, void *arg)
   if ((powerInfo & PSP_POWER_CB_SUSPENDING) != 0)
   {
     sleep_flag = 1;
+    if (!sleep_auto_saved && gamepak_filename[0] != '\0')
+    {
+      auto_savestate_sleep();
+      sleep_auto_saved = 1;
+    }
   }
   else
 
@@ -990,6 +1060,7 @@ static int power_callback(int unknown, int powerInfo, void *arg)
     psp_sound_frequency(SOUND_SAMPLES, SOUND_FREQUENCY);
 
     sleep_flag = 0;
+    sleep_auto_saved = 0;
   }
 
   return 0;
@@ -1066,6 +1137,10 @@ void error_msg(const char *text, u8 confirm)
 {
   char text_buff[512];
   GUI_ACTION_TYPE gui_action = CURSOR_NONE;
+  const int popup_w = 440;
+  const int popup_h = 120;
+  const int popup_x = (PSP_SCREEN_WIDTH - popup_w) / 2;
+  const int popup_y = (PSP_SCREEN_HEIGHT - popup_h) / 2;
 
   switch (confirm)
   {
@@ -1081,7 +1156,9 @@ void error_msg(const char *text, u8 confirm)
       sprintf(text_buff, "%s\n\n%s", text, MSG[MSG_ERR_QUIT]);
       break;
   }
-  print_swap_aware(text_buff, 6, 6, COLOR15_WHITE, COLOR15_BLACK);
+
+  draw_popup_frame_auto(popup_x, popup_y, popup_w, popup_h);
+  print_swap_aware(text_buff, popup_x + 12, popup_y + 12, color_active_item, BG_NO_FILL);
   flip_screen(1);
 
   while (gui_action == CURSOR_NONE)
@@ -1093,23 +1170,22 @@ void error_msg(const char *text, u8 confirm)
 u32 yesno_dialog(const char *text)
 {
   GUI_ACTION_TYPE gui_action = CURSOR_NONE;
-  const u16 dlg_x1 = 72;
-  const u16 dlg_y1 = 96;
-  const u16 dlg_x2 = 407;
-  const u16 dlg_y2 = 176;
+  const int popup_w = 336;
+  const int popup_h = 80;
+  const int popup_x = (PSP_SCREEN_WIDTH - popup_w) / 2;
+  const int popup_y = (PSP_SCREEN_HEIGHT - popup_h) / 2;
 
-  draw_box_fill(dlg_x1, dlg_y1, dlg_x2, dlg_y2, COLOR15_BLACK);
-  draw_box_line(dlg_x1, dlg_y1, dlg_x2, dlg_y2, COLOR15_WHITE);
+  draw_popup_frame_auto(popup_x, popup_y, popup_w, popup_h);
 
   if (option_language == 0)
   {
-    print_string(text, X_POS_CENTER, dlg_y1 + 24, COLOR15_WHITE, COLOR15_BLACK);
+    print_string(text, X_POS_CENTER, popup_y + 16, color_active_item, BG_NO_FILL);
   }
   else
   {
-    print_string_gbk(text, X_POS_CENTER, dlg_y1 + 24, COLOR15_WHITE, COLOR15_BLACK);
+    print_string_gbk(text, X_POS_CENTER, popup_y + 16, color_active_item, BG_NO_FILL);
   }
-  print_swap_aware(MSG[MSG_YES_NO], X_POS_CENTER, dlg_y1 + 56, COLOR15_WHITE, COLOR15_BLACK);
+  print_swap_aware(MSG[MSG_YES_NO], X_POS_CENTER, popup_y + 46, color_active_item, BG_NO_FILL);
 
   flip_screen(1);
 

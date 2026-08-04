@@ -88,6 +88,7 @@ extern int date_format;
 extern u32 enable_home_menu;
 
 extern u32 sleep_flag;
+extern u32 sleep_auto_saved;
 
 extern u32 synchronize_flag;
 extern u32 psp_fps_debug;
@@ -125,5 +126,9 @@ void *safe_malloc(size_t size);
 void main_write_mem_savestate(SceUID savestate_file);
 void main_read_savestate(SceUID savestate_file);
 
+u32 load_state_silent(char *savestate_filename);
+u32 save_state_silent(char *savestate_filename, u16 *screen_capture);
+
+void auto_savestate_sleep(void);
 
 #endif /* MAIN_H */
