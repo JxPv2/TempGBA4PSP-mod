@@ -895,7 +895,7 @@ int user_main(int argc, char *argv[])
       error_msg(MSG[MSG_ERR_LOAD_GAMEPACK], CONFIRMATION_QUIT);
       quit();
     }
-    add_recent_rom(argv[1]);
+    /* Single-game bubble launch: do not update Recent ROMs */
     rom_loaded = 1;
   }
   /* Priority 2: pre-installed game.gba for single-game packages */
@@ -915,7 +915,7 @@ int user_main(int argc, char *argv[])
       }
       else
       {
-        add_recent_rom(load_filename);
+        /* Fixed single-ROM package: do not update Recent ROMs */
         rom_loaded = 1;
       }
     }
