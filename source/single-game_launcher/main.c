@@ -365,7 +365,7 @@ int main(int argc, char *argv[])
                      "Default naming failed.\n"
                      "  Ensure emulator is in the same parent folder\n"
                      "  or create emulator_path.txt.\n"
-                     "  Expected folder path:",
+                     "  Expected folder name: %s",
                      DEFAULT_EMU_FOLDER);
             error_screen("Emulator directory not found.", detail, emu_dir);
         }
