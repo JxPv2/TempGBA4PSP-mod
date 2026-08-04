@@ -371,9 +371,15 @@ class SingleGameBuilder:
             f.write("\n".join(rom_lines) + "\n")
 
         # --- emulator_path.txt ---
-        # Ensure trailing slash for correct stub path concatenation
-        if emu_path and not emu_path.endswith("/"):
-            emu_path += "/"
+        # Directory form needs a trailing slash for stub path concatenation.
+        # Full .pbp boot paths must stay as-is (stub treats trailing '/' as a dir).
+        if emu_path:
+            emu_path = emu_path.strip()
+            stripped = emu_path.rstrip("/")
+            if stripped.lower().endswith(".pbp"):
+                emu_path = stripped
+            elif not emu_path.endswith("/"):
+                emu_path += "/"
 
         emu_lines = [
             "# TempGBA4PSP-mod Single-Game Launcher",
