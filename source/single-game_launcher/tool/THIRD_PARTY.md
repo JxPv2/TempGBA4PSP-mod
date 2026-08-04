@@ -54,8 +54,10 @@ Bundled in the PyInstaller release via `--add-binary`.
 | **Used For** | Audio conversion and seeking |
 | **Legal Info** | [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html) |
 
-> **Note:** Run `ffmpeg -version` to identify the exact version bundled with this release,
-> then download the matching source from the link above.
+> **Note:** Bundled Windows binary is **ffmpeg 7.1.1 essentials** from
+> [GyanD/codexffmpeg](https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip)
+> (www.gyan.dev). Run `ffmpeg -version` to confirm. Matching sources are available from
+> [ffmpeg.org](https://ffmpeg.org/download.html#source). This essentials build is GPL-configured.
 
 ### atracdenc
 
