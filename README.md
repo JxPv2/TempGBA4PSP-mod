@@ -263,6 +263,7 @@ Artifacts (`EBOOT.PBP`, `TempGBA.prx`, etc.) are written under `source/` on the 
 | Path | Role |
 |------|------|
 | `source/` | Emulator sources, Makefile, assets, build output |
+| `source/single-game_launcher/tool/` | Python GUI builder for custom single-game PSP XMB bubbles |
 | `BUILD-DOCKER.md` | Docker / PSPDev build instructions |
 | `game_config.txt` | Optional per-game idle-loop / SMC / timing tweaks |
 | `docs/` | Investigation notes (performance, video, etc.) |
@@ -278,6 +279,7 @@ Artifacts (`EBOOT.PBP`, `TempGBA.prx`, etc.) are written under `source/` on the 
 - **UI themes / i18n / X/O swap** — contributors to PR #20
 - **Single-game layout** — compatible with [GrabowskiDev/TempGBA4PSP-Single-game](https://github.com/GrabowskiDev/TempGBA4PSP-Single-game)
 - **This mod** — [andymcca/TempGBA4PSP-mod](https://github.com/andymcca/TempGBA4PSP-mod)
+- **Contributions** — [JxPv2](https://github.com/JxPv2) (single-game launcher builder tool and launcher stub, GUI improvements, boxart and recent ROMs)
 
 ---
 
