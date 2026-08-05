@@ -1,4 +1,4 @@
-# TempGBA4PSP-mod Single-Game Laun
+# TempGBA4PSP-mod Single-Game Launcher
 
 [![AI-Assisted](https://img.shields.io/badge/Built%20with-AI%20Assistance-blue)](CREDITS.md)
 
@@ -40,13 +40,13 @@ The following tools must be available (bundled in the PyInstaller release):
 
 ### Option A: Download Release (Recommended)
 
-1. Download the latest release from the [Releases](https://github.com/JxPv2/TempGBA4PSP-mod/releases) page
+1. Download the latest release from the [Releases](https://github.com/andymcca/TempGBA4PSP-mod/releases) page
 2. Extract and run `TempGBA4PSP-mod Single-Game Launcher Builder.exe` (Windows)
 
 ### Option B: Run from Source
 
 ```bash
-git clone https://github.com/JxPv2/TempGBA4PSP-mod.git
+git clone https://github.com/andymcca/TempGBA4PSP-mod.git
 cd source/single-game_launcher/tool
 pip install -r requirements.txt
 python gui.py
@@ -131,7 +131,11 @@ YourGameFolder/
 └── readme.txt
 ```
 
-Copy the entire folder to your PSP:
+**Required files:** `EBOOT.PBP` and `rom_path.txt` must both be present in the folder.
+**Conditional:** `emulator_path.txt` is only needed if you set a custom emulator path (default is auto-detected).
+**Optional:** `assets/` (icon, background, audio) and `readme.txt` are cosmetic — the launcher works without them.
+
+Copy the folder to your PSP:
 ```
 PSP/GAME/YourGameFolder/
 ```
