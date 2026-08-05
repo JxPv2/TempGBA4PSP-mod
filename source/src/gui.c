@@ -1880,14 +1880,14 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
       else
         print_swap_aware(MSG[MSG_BROWSER_HELP], 30, 258, color_help_text, BG_NO_FILL);
     }
-
+/*
       char str_buffer_size[32];
       sprintf(str_buffer_size, MSG[MSG_BUFFER], gamepak_ram_buffer_size >> 20);
 		if (option_language == 0)
 			print_string(str_buffer_size, 384, 258, color_help_text, BG_NO_FILL);
 		else
 			print_string_gbk(str_buffer_size, 384, 258, color_help_text, BG_NO_FILL);
-
+*/
       // PSP controller - hold
       if (get_pad_input(PSP_CTRL_HOLD) != 0)
 		{
