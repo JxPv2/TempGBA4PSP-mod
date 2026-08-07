@@ -1115,9 +1115,10 @@ u32 file_length(char *filename)
 {
   SceIoStat stats;
 
-  sceIoGetstat(filename, &stats);
+  if (sceIoGetstat(filename, &stats) < 0)
+    return 0;
 
-  return stats.st_size;
+  return (u32)stats.st_size;
 }
 
 void change_ext(char *src, char *buffer, const char *extension)

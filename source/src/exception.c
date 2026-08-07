@@ -52,8 +52,8 @@ void ExceptionHandler(PspDebugRegBlock *regs)
     for (;;) {
         sceCtrlReadBufferPositive(&pad, 1);
         if (pad.Buttons & PSP_CTRL_CROSS) {
-            char filename[MAX_FILE];
-            sprintf(filename, "%stempgba_crash.log", main_path);
+            char filename[MAX_PATH];
+            snprintf(filename, sizeof(filename), "%stempgba_crash.log", main_path);
             FILE *log = fopen(filename, "w");
             if (log != NULL) {
                 char testo[512];
@@ -97,7 +97,7 @@ void initExceptionHandler(void)
    option.position = 0;
    option.access = 1;
 
-   sprintf(prx_path, "%sexception.prx", main_path);
+   snprintf(prx_path, sizeof(prx_path), "%sexception.prx", main_path);
 
    if ((modid = kuKernelLoadModule(prx_path, 0, &option)) >= 0)
    {

@@ -69,6 +69,14 @@ s32 load_file_zip(char *filename)
     goto outcode;
   }
 
+  /* FilenameLength/ExtraFieldLength are signed in the on-disk header.
+   * Reject negatives and names that cannot fit in tmp[MAX_FILE]. */
+  if (data.FilenameLength < 0 || data.FilenameLength >= (s16)MAX_FILE ||
+      data.ExtraFieldLength < 0)
+  {
+    goto outcode;
+  }
+
   FILE_READ(fd, tmp, data.FilenameLength);
   tmp[data.FilenameLength] = 0; // end string
 
@@ -89,7 +97,10 @@ s32 load_file_zip(char *filename)
     goto outcode;
   }
 
-  ext = strrchr(tmp, '.') + 1;
+  ext = strrchr(tmp, '.');
+  if (ext == NULL)
+    goto outcode;
+  ext++;
 
   if ((strcasecmp(ext, "bin") == 0) || (strcasecmp(ext, "gba") == 0) || (strcasecmp(ext, "agb") == 0))
   {

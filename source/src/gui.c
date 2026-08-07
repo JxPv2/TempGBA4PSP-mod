@@ -1729,7 +1729,15 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
     num[DIR_LIST]  = 0;
 
     getcwd(current_dir_name, MAX_PATH);
-    strcat(current_dir_name, "/");
+    {
+      size_t dir_len = strlen(current_dir_name);
+      if (dir_len > 0 && current_dir_name[dir_len - 1] != '/' &&
+          dir_len + 1 < MAX_PATH)
+      {
+        current_dir_name[dir_len] = '/';
+        current_dir_name[dir_len + 1] = '\0';
+      }
+    }
 
     {
       char *root_check = strstr(current_dir_name, ":/");
@@ -1744,6 +1752,8 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
     scePowerLock(0);
     current_dir = sceIoDopen(current_dir_name);
 
+    if (current_dir >= 0)
+    {
     while (sceIoDread(current_dir, &current_file) > 0)
     {
       if (current_file.d_name[0] == '.')
@@ -1795,6 +1805,7 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
     } /* end of while */
 
     sceIoDclose(current_dir);
+    } /* end of valid sceIoDopen */
     scePowerUnlock(0);
 
     qsort((void *)file_list, num[FILE_LIST], sizeof(char *), sort_function);
