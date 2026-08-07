@@ -1880,14 +1880,14 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
       else
         print_swap_aware(MSG[MSG_BROWSER_HELP], 30, 258, color_help_text, BG_NO_FILL);
     }
-
+/*
       char str_buffer_size[32];
       sprintf(str_buffer_size, MSG[MSG_BUFFER], gamepak_ram_buffer_size >> 20);
 		if (option_language == 0)
 			print_string(str_buffer_size, 384, 258, color_help_text, BG_NO_FILL);
 		else
 			print_string_gbk(str_buffer_size, 384, 258, color_help_text, BG_NO_FILL);
-
+*/
       // PSP controller - hold
       if (get_pad_input(PSP_CTRL_HOLD) != 0)
 		{
@@ -2316,19 +2316,24 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
             if (total_items > 0)
               carousel_sel = (carousel_sel + 3) % total_items;
           }
+          else if (in_recent_section)
+          {
+            /* Ignore page-scroll in Recent ROMs section */
+            break;
+          }
           else if (num[column] > PAGE_SCROLL_NUM)
           {
             if (selection[column] < (num[column] - PAGE_SCROLL_NUM))
             {
               selection[column] += PAGE_SCROLL_NUM;
 
-              if (in_scroll[column] >= (file_list_visible_rows - PAGE_SCROLL_NUM))
+              if (in_scroll[column] >= (visible_rows[column] - PAGE_SCROLL_NUM))
               {
                 scroll_value[column] += PAGE_SCROLL_NUM;
 
-                if (scroll_value[column] > (num[column] - file_list_visible_rows))
+                if (scroll_value[column] > (num[column] - visible_rows[column]))
                 {
-                  scroll_value[column] = num[column] - FILE_LIST_ROWS;
+                  scroll_value[column] = num[column] - visible_rows[column];
                   in_scroll[column] = selection[column] - scroll_value[column];
                 }
               }
@@ -2342,12 +2347,12 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
               selection[column] = num[column] - 1;
               in_scroll[column] += PAGE_SCROLL_NUM;
 
-              if (in_scroll[column] >= (file_list_visible_rows - 1))
+              if (in_scroll[column] >= (visible_rows[column] - 1))
               {
-                if (num[column] > (file_list_visible_rows - 1))
+                if (num[column] > (visible_rows[column] - 1))
                 {
-                  in_scroll[column] = file_list_visible_rows - 1;
-                  scroll_value[column] = num[column] - file_list_visible_rows;
+                  in_scroll[column] = visible_rows[column] - 1;
+                  scroll_value[column] = num[column] - visible_rows[column];
                 }
                 else
                 {
@@ -2411,6 +2416,11 @@ s32 load_file(const char **wildcards, char *result, char *default_dir_name, u32 
           {
             if (total_items > 0)
               carousel_sel = (carousel_sel + total_items - 3) % total_items;
+          }
+          else if (in_recent_section)
+          {
+            /* Ignore page-scroll in Recent ROMs section */
+            break;
           }
           else if (selection[column] >= PAGE_SCROLL_NUM)
           {

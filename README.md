@@ -19,7 +19,7 @@
 
 ## About
 
-**TempGBA4PSP-mod** is a maintained PSP port of TempGBA (itself based on [phoe-nix’s TempGBA lineage](https://github.com/phoe-nix) and the classic gpSP dynarec core). This tree focuses on real-hardware PSP usability: better menus, stronger game compatibility, dynarec/video accuracy fixes pulled from upstream libretro/gpSP work, and performance options tuned for Allegrex.
+**TempGBA4PSP-mod** is a maintained PSP port of TempGBA (itself based on [phoe-nix’s TempGBA lineage](https://github.com/phoe-nix/TempGBA4PSP-mod) and the classic gpSP dynarec core). This tree focuses on real-hardware PSP usability: better menus, stronger game compatibility, dynarec/video accuracy fixes pulled from upstream libretro/gpSP work, and performance options tuned for Allegrex.
 
 It remains a homebrew GBA emulator — you need a legal BIOS dump (`gba_bios.bin`) and your own ROMs.
 
@@ -33,7 +33,7 @@ It remains a homebrew GBA emulator — you need a legal BIOS dump (`gba_bios.bin
 | **Video** | Dual renderer (classic + PR258/`video.cc`), 16:9 fullscreen, OAM hijack toggle, optional PSP VSync |
 | **Performance** | LTO builds, Allegrex blend opts, sticky ROM paging, SWI HLE, EWRAM stack fast paths, RAM JIT reuse modes |
 | **Accuracy** | Dynarec flag fixes, sound I/O masks, OAM/affine/HBlank IRQ fixes, `game_config` SMC gates |
-| **Install** | Custom XMB icon/splash, drop-in single-game (`roms/game.gba`) auto-detect |
+| **Install** | Custom XMB icon/splash, drop-in single-game (`roms/game.gba`) auto-detect, **included GUI builder tool** for custom XMB bubbles |
 | **Compat** | Fixes for titles that previously failed or glitched (see below) |
 
 ---
@@ -44,8 +44,12 @@ It remains a homebrew GBA emulator — you need a legal BIOS dump (`gba_bios.bin
 
 - **UI overhaul (PR #20)** — redesigned menus with clearer Graphics / Emulator options layout.
 - **Theme system** — nine presets (Original, Dark, Light, Blue, Green, Red, Purple, High Contrast, Retro), plus a **custom color picker** (background, active/inactive items, help text, scroll bar, battery colors, and more). Themes can be saved independently of global config.
+- **Boxart display** — Show 141×141 cover art next to the ROM list in the file browser. Place PNG images in the directory set by `boxart_directory` in `dir.ini`. The PNG filename must match the ROM filename (e.g., `PokemonEmerald.png` for `PokemonEmerald.gba`). On first load the PNG is decoded and a `.raw` cache is written for instant loading afterward — you can delete the PNG after the cache is created if you want to save space.
+- **Carousel mode** — Alternative 3D-style ROM browser with boxart and savestate screenshot previews. Folders can also display boxart using the separate `folder_boxart_directory` setting in `dir.ini`. Toggle between list view and carousel view in the file browser.
+- **Recent ROMs** — Up to 5 recently played games appear at the top of the file browser for quick re-launch. Saved automatically between sessions.
 - **Internationalization** — menu strings in **Japanese, English, Simplified Chinese, Traditional Chinese, and Italian**.
 - **Confirm button swap** — choose **O confirms** or **X confirms** (PSP-region style). Older `tempgba.cfg` files written before these slots were added still load correctly.
+- **Savestates** — 10 manual slots plus an automatic slot that saves when you exit the emulator, put the PSP to sleep, load a new ROM, or load a different savestate. 
 - **Savestate UX** — details save/load fixes; leaving the menu after state operations behaves more predictably.
 - **Menu polish** — fixed `%s` label formatting, restored cursor repeat speed, and earlier crash/text issues between game ↔ menu transitions.
 
@@ -90,7 +94,28 @@ It remains a homebrew GBA emulator — you need a legal BIOS dump (`gba_bios.bin
 
 ### Single-game installs
 
-This build auto-detects [GrabowskiDev single-game](https://github.com/GrabowskiDev/TempGBA4PSP-Single-game) folder layouts. If `roms/game.gba` exists, the emulator loads it on startup with **no ROM browser**. Multi-ROM installs are unchanged when `game.gba` is absent.
+Run individual GBA games as standalone PSP XMB bubbles — each appears on your PSP home screen as its own "game" with custom icon, background, and menu music.
+
+**Two different approaches are supported.**
+
+---
+
+**Approach A: Launcher Stub (recommended, this repo's method)**
+
+A **separate tiny launcher EBOOT** boots your game and then hands off to the main emulator.
+
+How it works:
+1. The launcher is a small `EBOOT.PBP` that lives in its own PSP folder (e.g., `PSP/GAME/MyPokemonGame/`)
+2. It reads `rom_path.txt` — a text file containing the path to your GBA ROM (e.g., `ms0:/roms/pokemon.gba`)
+3. It reads `emulator_path.txt` (optional) — the path to the main TempGBA4PSP-mod EBOOT. If omitted, it auto-detects by looking one folder up for `tempgba4psp-mod/EBOOT.PBP`
+4. The launcher loads the main emulator and passes the ROM path to it
+5. The game boots straight into gameplay — no ROM browser
+
+**Why use this:** Each game gets its own XMB bubble with custom icon, background, and menu audio. The main emulator stays in one place and is shared by all launcher bubbles.
+
+**Builder tool included:** A Python GUI in `source/single-game_launcher/tool/` generates the launcher folder, text files, and custom assets for you. See the [tool README](source/single-game_launcher/tool/README.md).
+
+**Approach B: Compatible with GrabowskiDev single-game** — This build also auto-detects [GrabowskiDev/TempGBA4PSP-Single-game](https://github.com/GrabowskiDev/TempGBA4PSP-Single-game) folder layouts. If `roms/game.gba` exists, the emulator loads it on startup with **no ROM browser**. Multi-ROM installs are unchanged when `game.gba` is absent.
 
 To upgrade an existing single-game folder, copy these from a fresh build (keep your custom `PBOOT.PBP`, `roms/game.gba`, and saves):
 
@@ -238,6 +263,7 @@ Artifacts (`EBOOT.PBP`, `TempGBA.prx`, etc.) are written under `source/` on the 
 | Path | Role |
 |------|------|
 | `source/` | Emulator sources, Makefile, assets, build output |
+| `source/single-game_launcher/tool/` | Python GUI builder for custom single-game PSP XMB bubbles |
 | `BUILD-DOCKER.md` | Docker / PSPDev build instructions |
 | `game_config.txt` | Optional per-game idle-loop / SMC / timing tweaks |
 | `docs/` | Investigation notes (performance, video, etc.) |
@@ -253,6 +279,7 @@ Artifacts (`EBOOT.PBP`, `TempGBA.prx`, etc.) are written under `source/` on the 
 - **UI themes / i18n / X/O swap** — contributors to PR #20
 - **Single-game layout** — compatible with [GrabowskiDev/TempGBA4PSP-Single-game](https://github.com/GrabowskiDev/TempGBA4PSP-Single-game)
 - **This mod** — [andymcca/TempGBA4PSP-mod](https://github.com/andymcca/TempGBA4PSP-mod)
+- **Contributions** — [JxPv2](https://github.com/JxPv2) (single-game launcher builder tool and launcher stub, GUI improvements, boxart and recent ROMs)
 
 ---
 

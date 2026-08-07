@@ -4,7 +4,7 @@
 
 ## TempGBA4PSP-mod Single-Game Launcher Builder
 
-Made with care by **JxP** for the PSP homebrew community.
+Made with care by [**JxPv2**](https://github.com/JxPv2) for the PSP homebrew community.
 
 ---
 
@@ -41,7 +41,7 @@ winding lineage. Here's how we got here:
   into [**TempGBA4PSP-mod**](https://github.com/phoe-nix/TempGBA4PSP-mod),
   cleaning up menus and fixing button mappings
 - **2024-2026** — [**andymcca**](https://github.com/andymcca/TempGBA4PSP-mod)
-  and **JxP** continue the fork, adding new features and keeping the emulator alive
+  and [**JxPv2**](https://github.com/JxPv2) continue the fork, adding new features and keeping the emulator alive
 
 This builder tool is a love letter to that lineage. Every bubble it creates
 carries a piece of that 20-year history.
