@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="source/res/ICON0.png" alt="TempGBA" width="720">
+  <img src="source/res/ICON0.png" alt="TempGBA" width="360">
 </p>
 
 <h1 align="center">TempGBA4PSP-mod</h1>
