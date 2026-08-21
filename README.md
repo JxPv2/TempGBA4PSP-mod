@@ -280,6 +280,7 @@ Artifacts (`EBOOT.PBP`, `TempGBA.prx`, etc.) are written under `source/` on the 
 - **UI themes / i18n / X/O swap** — contributors to PR #20
 - **Single-game layout** — compatible with [GrabowskiDev/TempGBA4PSP-Single-game](https://github.com/GrabowskiDev/TempGBA4PSP-Single-game)
 - **GBK codepage plugin & unified font rendering** — [eleqian](https://gitee.com/eleqian) / [lakent/TempGBA4PSP-cc](https://github.com/lakent/TempGBA4PSP-cc)
+- **PSP sleep/resume power management** — [Piero Carrieri / GBA-Rush-PSP](https://github.com/redcode9/GBA-Rush-PSP)
 - **This mod** — [andymcca/TempGBA4PSP-mod](https://github.com/andymcca/TempGBA4PSP-mod)
 - **Contributions** — [JxPv2](https://github.com/JxPv2) (single-game launcher builder tool and launcher stub, GUI improvements, boxart and recent ROMs, language display fixes, GBK integration)
 
