@@ -182,7 +182,7 @@ static const char *video_renderer_options[2];
 static const char *ram_dynarec_options[3];
 static const char *swap_button_options[2];
 static const char *theme_preset_options[9];
-static const char *language_option[5];
+static const char *language_option[LANGUAGE_NUM];
 static const char *gamepad_config_buttons[20];
 
 static void init_choice_arrays(void)
@@ -561,13 +561,15 @@ void menu_pick_color(void);
 static u32 action_savestate_slot(u32 slot);
 static u32 action_loadstate_slot(u32 slot);
 
+static u32 last_language_drawn = 0xFFFFFFFF;
+
 #define TEXT_TOOLTIP_POS_Y  (210)
 #define MENU_LIST_POS_X     (10) //18 default
 
 #define SCREEN_IMAGE_POS_X  (228)
 #define SCREEN_IMAGE_POS_Y  (44)
 
-#define BATT_STATUS_POS_X   (PSP_SCREEN_WIDTH - (FONTWIDTH * 14))  // 396
+#define BATT_STATUS_POS_X   (PSP_SCREEN_WIDTH - (FONTWIDTH * 15))  // 390
 #define TIME_STATUS_POS_X   (BATT_STATUS_POS_X - (FONTWIDTH * 22)) // 264
 #define DIR_NAME_LENGTH     ((TIME_STATUS_POS_X / FONTWIDTH) - 2)  // 42
 
@@ -3734,6 +3736,18 @@ u32 menu(void)
       menu_init_flag = 0;
     }
 
+    /* If no game is loaded and the language changed since we last drew
+       the "no game" screen, redraw it in the new language. */
+    if (gamepak_filename[0] == '\0' && last_language_drawn != option_language)
+    {
+        memset(current_screen, 0x00, GBA_SCREEN_SIZE);
+        print_string_ext(MSG[MSG_NON_LOAD_GAME], X_POS_CENTER, 74,
+                         COLOR15_WHITE, BG_NO_FILL, current_screen, GBA_SCREEN_WIDTH);
+        last_language_drawn = option_language;
+    }
+
+    screen_image_ptr = current_screen;
+
     if (menu_main_option_num != current_option_num)
       menu_main_option_num = current_option_num;
   }
@@ -3810,7 +3824,9 @@ u32 menu(void)
     first_load = 1;
 
     memset(current_screen, 0x00, GBA_SCREEN_SIZE);
-	print_string_ext(MSG[MSG_NON_LOAD_GAME], X_POS_CENTER, 74, COLOR15_WHITE, BG_NO_FILL, current_screen, GBA_SCREEN_WIDTH);
+    print_string_ext(MSG[MSG_NON_LOAD_GAME], X_POS_CENTER, 74, COLOR15_WHITE, BG_NO_FILL, current_screen, GBA_SCREEN_WIDTH);
+
+    last_language_drawn = option_language;
   }
 
   void gamepak_file_reopen(void)
