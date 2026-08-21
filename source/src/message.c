@@ -21,16 +21,7 @@
 #include "common.h"
 
 
-const char *language_option[LANGUAGE_NUM] =
-{
-    "日本語",
-    "English",
-    "简体中文",
-    "繁體中文",
-    "Italiano"
-};
-
-const char *message[LANGUAGE_NUM][MSG_END] =
+const char *message[5][MSG_END] =
 {
 #include "text/message_jpn.h"
 #include "text/message_eng.h"

@@ -182,6 +182,7 @@ static const char *video_renderer_options[2];
 static const char *ram_dynarec_options[3];
 static const char *swap_button_options[2];
 static const char *theme_preset_options[9];
+static const char *language_option[5];
 static const char *gamepad_config_buttons[20];
 
 static void init_choice_arrays(void)
@@ -250,6 +251,12 @@ static void init_choice_arrays(void)
     theme_preset_options[6] = MSG[MSG_THEMES_PURPLE];
     theme_preset_options[7] = MSG[MSG_THEMES_HIGH_CONTRAST];
     theme_preset_options[8] = MSG[MSG_THEMES_RETRO];
+
+    language_option[0] = MSG[MSG_LANG_JAPANESE];
+    language_option[1] = MSG[MSG_LANG_ENGLISH];
+    language_option[2] = MSG[MSG_LANG_CHS];
+    language_option[3] = MSG[MSG_LANG_CHT];
+    language_option[4] = MSG[MSG_LANG_ITA];
 
     gamepad_config_buttons[0]  = MSG[MSG_PAD_MENU_CFG_0];
     gamepad_config_buttons[1]  = MSG[MSG_PAD_MENU_CFG_1];
@@ -4422,7 +4429,7 @@ u32 menu(void)
     print_swap_aware(bottom_buf, 30, 258, color_help_text, BG_NO_FILL);
   }
 
-// 	print_string(MSG[current_option->help_string], 30, 258, color_help_text, BG_NO_FILL);
+  //print_string(MSG[current_option->help_string], 30, 258, color_help_text, BG_NO_FILL);
 
     // PSP controller - hold
     if (get_pad_input(PSP_CTRL_HOLD) != 0)
