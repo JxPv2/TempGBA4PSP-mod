@@ -1,3 +1,7 @@
+/* cp_fix_gbk — based on eleqian's TempGBA4PSP-cc
+ * https://github.com/lakent/TempGBA4PSP-cc (mirror of https://gitee.com/eleqian)
+ */
+
 TARGET = cp_fix_gbk
 OBJS = main.o exports.o
 

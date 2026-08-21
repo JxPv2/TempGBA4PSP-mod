@@ -1,3 +1,7 @@
+/* cp_fix_gbk — based on eleqian's TempGBA4PSP-cc
+ * https://github.com/lakent/TempGBA4PSP-cc (mirror of https://gitee.com/eleqian)
+ */
+
 PSP_BEGIN_EXPORTS
 
 PSP_EXPORT_START(syslib, 0, 0x8000)

@@ -1,3 +1,7 @@
+/* cp_fix_gbk — based on eleqian's TempGBA4PSP-cc
+ * https://github.com/lakent/TempGBA4PSP-cc (mirror of https://gitee.com/eleqian)
+ */
+
 #include <pspsdk.h>
 #include "systemctrl.h"
 
@@ -16,6 +20,7 @@ PSP_MODULE_INFO("cp_fix_gbk", 0x1007, 1, 0);
 
 #define MAKE_JUMP(a, f) _sw(0x08000000 | (((u32)(f) & 0x0FFFFFFC) >> 2), a);
 
+//by Davee
 #define HIJACK_FUNCTION(a, f, ptr) \
 { \
     u32 _func_ = a; \
